@@ -1,0 +1,268 @@
+---
+title: "Control 5 R"
+author: "José Krarup"
+date: "2024-12-12"
+output: html_document
+---
+
+```{r}
+library(tidyverse)   
+library(plotly)        
+library(scales)       
+library(lubridate)     
+library(corrplot)      
+library(gridExtra)     
+library(hrbrthemes)    
+library(stats)
+library(dplyr)
+library(caret)
+```
+# 1 Cargar datos
+```{r}
+# Cargar datos
+datos <- read.csv("enhanced_saas_marketing_data.csv")
+
+# Preparación inicial de datos
+datos_prep <- datos %>%
+  # Convertir fecha a formato Date
+  mutate(
+    date = as.Date(date),
+    month = floor_date(date, "month"),
+    # Crear métricas derivadas
+    gross_margin = (revenue - costs) / revenue,
+    marketing_efficiency = revenue / marketing_spend,
+    clv_cac_ratio = customer_lifetime_value / customer_acquisition_cost
+  )
+
+# Verificar estructura de datos
+str(datos_prep)
+summary(datos_prep)
+```
+# 2 Análisis de tendencias temporales
+```{r}
+# Función para crear gráfico de tendencias
+crear_tendencias <- function(datos_prep, metrica, titulo) {
+  grafico <- datos_prep %>%
+    group_by(date, company) %>%
+    summarise(valor = mean(!!sym(metrica)), .groups="drop") %>%
+    ggplot(aes(x = date, y = valor, color = company)) +
+    geom_line(size = 1) +
+    geom_point(size = 2) +
+    theme_ipsum() +
+    labs(
+      title = titulo,
+      x = "Fecha",
+      y = metrica
+    ) +
+    theme(legend.position = "bottom")
+
+  return(ggplotly(grafico))
+}
+
+# Crear gráficos de tendencias
+tendencias_revenue <- crear_tendencias(datos_prep, "revenue",
+                                     "Tendencia de Ingresos por Empresa")
+tendencias_cac <- crear_tendencias(datos_prep, "customer_acquisition_cost",
+                                  "Evolución del CAC")
+
+```
+
+```{r}
+tendencias_revenue
+```
+```{r}
+tendencias_cac
+```
+
+# 3 Análisis de distribuciones
+```{r}
+# Función para análisis de distribución
+analizar_distribucion <- function(datos_prep, variable) {
+  # Histograma
+  hist <- ggplot(datos_prep, aes(x = !!sym(variable), fill = company)) +
+    geom_histogram(alpha = 0.6, bins = 30) +
+    facet_wrap(~company, scales = "free") +
+    theme_minimal() +
+    labs(title = paste("Distribución de", variable))
+
+  # Box plot
+  box <- ggplot(datos_prep, aes(x = company, y = !!sym(variable), fill = company)) +
+    geom_boxplot() +
+    theme_minimal() +
+    labs(title = paste("Box Plot de", variable)) +
+    theme(axis.text.x = element_text(angle = 45))
+
+  # Combinar gráficos
+  grid.arrange(hist, box, ncol = 1)
+}
+
+# Analizar distribuciones de métricas clave
+analizar_distribucion(datos_prep, "revenue")
+```
+```{r}
+analizar_distribucion(datos_prep, "customer_lifetime_value")
+```
+
+# 4 Análisis estadístico
+```{r}
+# Función para análisis estadístico por empresa
+analisis_estadistico <- function(datos_prep) {
+  resumen <- datos_prep %>%
+    group_by(company) %>%
+    summarise(
+      # Métricas financieras
+      revenue_mean = mean(revenue),
+      revenue_sd = sd(revenue),
+      margin_mean = mean(gross_margin),
+
+      # Métricas de cliente
+      cac_mean = mean(customer_acquisition_cost),
+      clv_mean = mean(customer_lifetime_value),
+      clv_cac_ratio = mean(clv_cac_ratio),
+
+      # Métricas de engagement
+      satisfaction_mean = mean(customer_satisfaction),
+      churn_rate_mean = mean(churn_rate),
+
+      # Tests estadísticos
+      revenue_normality = shapiro.test(revenue)$p.value
+    )
+
+  return(resumen)
+}
+
+# Ejecutar análisis estadístico
+resumen_estadistico <- analisis_estadistico(datos_prep)
+```
+
+```{r}
+resumen_estadistico
+```
+
+# 5 Análisis de correlaciones
+```{r}
+# Función para análisis de correlaciones
+analizar_correlaciones <- function(datos_prep) {
+  # Seleccionar métricas numéricas
+  metricas_numericas <- datos_prep %>%
+    select_if(is.numeric)
+  
+  # Calcular correlaciones
+  correlaciones <- cor(metricas_numericas, use = "complete.obs")
+
+  # Crear visualización
+  corrplot(correlaciones,
+          method = "color",
+          type = "upper",
+          addCoef.col = "black",
+          number.cex = 0.5,
+          tl.cex = 0.5,
+          title = "Matriz de Correlaciones")
+}
+
+# Visualizar correlaciones
+analizar_correlaciones(datos_prep)
+```
+# 6 Análisis de eficiencia de marketing
+```{r}
+# Función para análisis de ROI
+analisis_roi <- function(datos_prep) {
+  roi_plot <- datos_prep %>%
+    group_by(company, month) %>%
+    summarise(
+      marketing_roi = mean(marketing_roi),
+      marketing_spend = mean(marketing_spend), .groups = "drop"
+    ) %>%
+    ggplot(aes(x = marketing_spend, y = marketing_roi, color = company)) +
+    geom_point(size = 3, alpha = 0.6) +
+    geom_smooth(method = "lm", se = FALSE) +
+    theme_minimal() +
+    labs(
+      title = "ROI vs Inversión en Marketing",
+      x = "Inversión en Marketing",
+      y = "ROI"
+    )
+
+  return(ggplotly(roi_plot))
+}
+
+# Visualizar análisis de ROI
+grafico_roi <- analisis_roi(datos_prep)
+grafico_roi
+```
+
+
+
+# Ejercicios
+
+# 1. Crear un dashboard combinando las visualizaciones más relevantes
+```{r}
+library(flexdashboard)
+```
+
+# 2. Realizar análisis de segmentación por región
+```{r}
+segmentacion_region <- datos_prep %>%
+  group_by(region) %>%
+  summarise(
+    ganancia_prom = mean(revenue, na.rm = TRUE),
+    clv_prom = mean(customer_lifetime_value, na.rm = TRUE)
+  )
+
+ggplot(segmentacion_region, aes(x = reorder(region, ganancia_prom), y = ganancia_prom)) +
+  geom_bar(stat = "identity", fill = "skyblue") +
+  labs(title = "Ganancias Promedio por Región", x = "Región", y = "Ganancia Promedio") +
+  theme_minimal() +
+  coord_flip()
+
+ggplot(segmentacion_region, aes(x = reorder(region, clv_prom), y = clv_prom)) +
+  geom_bar(stat = "identity", fill = "blue") +
+  labs(title = "Customer Lifetime Value Promedio por Región", x = "Región", y = "CLV Promedio") +
+  theme_minimal() +
+  coord_flip()
+
+```
+# 3. Desarrollar un modelo predictivo simple para el revenue
+```{r}
+set.seed(123)
+datos_modelo <- datos_prep %>%
+  select(revenue, marketing_spend, customer_acquisition_cost, avg_session_duration) %>%
+  na.omit()
+
+trainIndex <- createDataPartition(datos_modelo$revenue, p = 0.7, list = FALSE)
+train_data <- datos_modelo[trainIndex,]
+test_data <- datos_modelo[-trainIndex,]
+
+modelo <- lm(revenue ~ marketing_spend + customer_acquisition_cost + avg_session_duration, data = train_data)
+
+summary(modelo)
+```
+# 4. Analizar la eficiencia de diferentes canales de marketing
+```{r}
+roi_canal <- datos_prep %>%
+  summarise(
+    organic_roi = sum(revenue[organic_traffic > 0]) / sum(marketing_spend[organic_traffic > 0]),
+    direct_roi = sum(revenue[direct_traffic > 0]) / sum(marketing_spend[direct_traffic > 0]),
+    referral_roi = sum(revenue[referral_traffic > 0]) / sum(marketing_spend[referral_traffic > 0]),
+    paid_roi = sum(revenue[paid_traffic > 0]) / sum(marketing_spend[paid_traffic > 0])
+  )
+
+roi_long <- tidyr::pivot_longer(roi_canal, cols = everything(), names_to = "Channel", values_to = "ROI")
+ggplot(roi_long, aes(x = Channel, y = ROI, fill = Channel)) +
+  geom_bar(stat = "identity")
+  labs(title = "ROI por Canal de Marketing", x = "Canal", y = "ROI") +
+  theme_minimal()
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
